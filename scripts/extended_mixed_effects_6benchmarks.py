@@ -17,10 +17,10 @@ Methodology is IDENTICAL to the original:
   - New: leave-one-dataset-out CV (meaningful with n=6 datasets)
 
 New data loaded from:
-  etc/analysis/per_instance_results_swe_tb.csv
+  scripts/per_instance_results_swe_tb.csv
 
 Run:
-  python etc/analysis/extended_mixed_effects_6benchmarks.py
+  python scripts/extended_mixed_effects_6benchmarks.py
 """
 
 import os
@@ -1054,7 +1054,7 @@ def main():
     print_section("EXTENDED MIXED-EFFECTS REGRESSION: 4 → 6 BENCHMARKS")
     print("  Nature Machine Intelligence Revision")
     print("  Methodology: identical to mixed_effect_model.ipynb Cell 6")
-    print("  New data source: etc/analysis/per_instance_results_swe_tb.csv")
+    print("  New data source: scripts/per_instance_results_swe_tb.csv")
 
     # ------------------------------------------------------------------
     # Step 1: Locate CSV
@@ -1169,7 +1169,7 @@ def main():
     print_section("REPRODUCIBILITY NOTES")
     print("""
   1. Original data: embedded from colab_analysis/mixed_effect_model.ipynb Cell 6 (180 rows)
-  2. New data: aggregated from etc/analysis/per_instance_results_swe_tb.csv (90 rows)
+  2. New data: aggregated from scripts/per_instance_results_swe_tb.csv (90 rows)
      - Each (dataset, architecture, model) cell = mean of 20 instances
   3. Intelligence scores: Table 6 of paper + gemini-3-flash-preview=71 (Artificial Analysis)
   4. Coordination metrics: Table 5 of paper (unchanged, per-architecture)

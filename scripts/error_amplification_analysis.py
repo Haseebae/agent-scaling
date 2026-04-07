@@ -38,7 +38,7 @@ Data sources
 ------------
     Original 180 rows  : colab_analysis/mixed_effect_model.ipynb Cell 4
                          4 benchmarks x 5 architectures x 9 models
-    New 90 rows        : etc/analysis/per_instance_results_swe_tb.csv
+    New 90 rows        : scripts/per_instance_results_swe_tb.csv
                          2 benchmarks x 5 architectures x 9 models
     Combined           : 270 rows, 6 benchmarks total
 """

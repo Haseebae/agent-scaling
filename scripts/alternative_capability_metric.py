@@ -32,7 +32,7 @@ THIS SCRIPT:
   of capability metric?
 
 Run:
-  python etc/analysis/alternative_capability_metric.py
+  python scripts/alternative_capability_metric.py
 """
 
 import os
@@ -1056,9 +1056,9 @@ def main():
 
     print_section("REPRODUCIBILITY NOTES")
     print(f"""
-  Script    : etc/analysis/alternative_capability_metric.py
+  Script    : scripts/alternative_capability_metric.py
   Data      : 180 original rows (ORIGINAL_DATA embedded) +
-              {len(new_rows)} rows from etc/analysis/per_instance_results_swe_tb.csv
+              {len(new_rows)} rows from scripts/per_instance_results_swe_tb.csv
   Total N   : 270 (6 benchmarks × 9 models × 5 architectures)
   Formula   : 19-predictor OLS, identical structure to extended_mixed_effects_6benchmarks.py
   CV        : 5-fold KFold(shuffle=True, random_state=42)

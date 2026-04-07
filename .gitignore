@@ -53,7 +53,6 @@ tests/
 
 # Exclude private/sensitive dirs (NMI rebuttal)
 nmi_rebuttal/
-scripts/
 colab_analysis/
 latex/
 .omc/

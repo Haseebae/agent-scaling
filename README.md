@@ -49,13 +49,13 @@ LANGFUSE_PUBLIC_KEY="your-public-key"
 Run an experiment with default configuration:
 
 ```bash
-python run_scripts/run_experiment.py
+python scripts/run_experiment.py
 ```
 
 Run in debug mode (processes fewer instances):
 
 ```bash
-python run_scripts/run_experiment.py debug=true
+python scripts/run_experiment.py debug=true
 ```
 
 ### Configuring Experiments
@@ -64,19 +64,19 @@ The framework uses [Hydra](https://hydra.cc/docs/intro/) for configuration manag
 
 ```bash
 # Run single-agent on PlanCraft dataset
-python run_scripts/run_experiment.py agent=single-agent dataset=plancraft-test
+python scripts/run_experiment.py agent=single-agent dataset=plancraft-test
 
 # Run multi-agent centralized system
-python run_scripts/run_experiment.py agent=multi-agent-centralized dataset=plancraft-test
+python scripts/run_experiment.py agent=multi-agent-centralized dataset=plancraft-test
 
 # Run with different LLM
-python run_scripts/run_experiment.py llm.model=gpt-4o-mini
+python scripts/run_experiment.py llm.model=gpt-4o-mini
 
 # Run with parallel workers
-python run_scripts/run_experiment.py num_workers=4
+python scripts/run_experiment.py num_workers=4
 
 # Process more instances
-python run_scripts/run_experiment.py max_instances=10
+python scripts/run_experiment.py max_instances=10
 ```
 
 ### Available Configurations
@@ -117,7 +117,7 @@ The paper evaluates on six benchmarks. Four are integrated directly into this re
 ### Single-Agent on PlanCraft
 
 ```bash
-python run_scripts/run_experiment.py \
+python scripts/run_experiment.py \
     agent=single-agent \
     dataset=plancraft-test \
     llm.model=gemini/gemini-2.0-flash \
@@ -127,7 +127,7 @@ python run_scripts/run_experiment.py \
 ### Multi-Agent Centralized on PlanCraft
 
 ```bash
-python run_scripts/run_experiment.py \
+python scripts/run_experiment.py \
     agent=multi-agent-centralized \
     dataset=plancraft-test \
     llm.model=gemini/gemini-2.0-flash \
@@ -137,7 +137,7 @@ python run_scripts/run_experiment.py \
 ### Multi-Agent Centralized on BrowseComp-Plus
 
 ```bash
-python run_scripts/run_experiment.py \
+python scripts/run_experiment.py \
     agent=multi-agent-centralized \
     dataset=browsecomp-plus \
     llm.model=openai/gpt-5-mini \
@@ -147,7 +147,7 @@ python run_scripts/run_experiment.py \
 ### Single-Agent on SWE-bench Verified (Docker required)
 
 ```bash
-python run_scripts/run_experiment.py \
+python scripts/run_experiment.py \
     agent=single-agent \
     dataset=swebench-verified \
     llm.model=openai/gpt-5-mini \
@@ -157,7 +157,7 @@ python run_scripts/run_experiment.py \
 ### Multi-Agent Centralized on Terminal-Bench (Docker required)
 
 ```bash
-python run_scripts/run_experiment.py \
+python scripts/run_experiment.py \
     agent=multi-agent-centralized \
     dataset=terminalbench \
     llm.model=openai/gpt-5-mini \
@@ -170,13 +170,13 @@ The multi-agent centralized system supports configuring the number of agents:
 
 ```bash
 # Run with 5 agents
-python run_scripts/run_experiment.py \
+python scripts/run_experiment.py \
     agent=multi-agent-centralized \
     agent.n_base_agents=5 \
     dataset=plancraft-test
 
 # Run with 10 agents
-python run_scripts/run_experiment.py \
+python scripts/run_experiment.py \
     agent=multi-agent-centralized \
     agent.n_base_agents=10 \
     dataset=plancraft-test
@@ -238,14 +238,14 @@ agent-scaling/
 │   ├── env/                 # Environment & tools (includes Docker environments)
 │   ├── llm/                 # LLM integration
 │   └── config/              # Configuration classes
-├── run_scripts/             # Entry points
-│   └── run_experiment.py
+├── scripts/                 # Entry point + analysis scripts
+│   ├── run_experiment.py
+│   └── (regression and scaling-principle analysis scripts)
 ├── run_conf/                # Hydra configurations
 │   ├── agent/               # Agent configs (single, centralized, decentralized, hybrid, independent)
 │   ├── dataset/             # Dataset configs
 │   └── run_exp.yaml         # Master config
 ├── prompts/                 # Prompt templates
-├── analysis/                # Regression / scaling-principle analysis scripts
 ├── example_traces/          # Sanitized sample execution traces
 ├── datasets/                # (user-populated) Dataset files; see DATA_AVAILABILITY.md
 ├── REPRODUCTION.md          # Step-by-step reproduction guide

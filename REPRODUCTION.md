@@ -77,7 +77,7 @@ LANGFUSE_HOST="https://us.cloud.langfuse.com"
 The framework uses [Hydra](https://hydra.cc/docs/intro/) for configuration. The main entry point is:
 
 ```bash
-python run_scripts/run_experiment.py [overrides...]
+python scripts/run_experiment.py [overrides...]
 ```
 
 ### Core parameters
@@ -100,43 +100,43 @@ All experiments in the paper use `temperature=0.0` and `n_base_agents=3` (for mu
 
 ```bash
 # PlanCraft
-python run_scripts/run_experiment.py agent=single-agent dataset=plancraft-test llm.model=gemini/gemini-2.0-flash
+python scripts/run_experiment.py agent=single-agent dataset=plancraft-test llm.model=gemini/gemini-2.0-flash
 
 # BrowseComp-Plus
-python run_scripts/run_experiment.py agent=single-agent dataset=browsecomp-plus llm.model=openai/gpt-5-mini
+python scripts/run_experiment.py agent=single-agent dataset=browsecomp-plus llm.model=openai/gpt-5-mini
 
 # SWE-bench Verified (20-instance subset)
-python run_scripts/run_experiment.py agent=single-agent dataset=swebench-verified llm.model=openai/gpt-5-mini
+python scripts/run_experiment.py agent=single-agent dataset=swebench-verified llm.model=openai/gpt-5-mini
 
 # Terminal-Bench (20-instance subset)
-python run_scripts/run_experiment.py agent=single-agent dataset=terminalbench llm.model=openai/gpt-5-mini
+python scripts/run_experiment.py agent=single-agent dataset=terminalbench llm.model=openai/gpt-5-mini
 ```
 
 #### Multi-agent centralized (lead + subagents)
 
 ```bash
-python run_scripts/run_experiment.py agent=multi-agent-centralized dataset=plancraft-test llm.model=gemini/gemini-2.0-flash
-python run_scripts/run_experiment.py agent=multi-agent-centralized dataset=browsecomp-plus llm.model=openai/gpt-5-mini
-python run_scripts/run_experiment.py agent=multi-agent-centralized dataset=swebench-verified llm.model=openai/gpt-5-mini
-python run_scripts/run_experiment.py agent=multi-agent-centralized dataset=terminalbench llm.model=openai/gpt-5-mini
+python scripts/run_experiment.py agent=multi-agent-centralized dataset=plancraft-test llm.model=gemini/gemini-2.0-flash
+python scripts/run_experiment.py agent=multi-agent-centralized dataset=browsecomp-plus llm.model=openai/gpt-5-mini
+python scripts/run_experiment.py agent=multi-agent-centralized dataset=swebench-verified llm.model=openai/gpt-5-mini
+python scripts/run_experiment.py agent=multi-agent-centralized dataset=terminalbench llm.model=openai/gpt-5-mini
 ```
 
 #### Multi-agent decentralized (peer consensus)
 
 ```bash
-python run_scripts/run_experiment.py agent=multi-agent-decentralized dataset=plancraft-test llm.model=gemini/gemini-2.0-flash
+python scripts/run_experiment.py agent=multi-agent-decentralized dataset=plancraft-test llm.model=gemini/gemini-2.0-flash
 ```
 
 #### Multi-agent hybrid
 
 ```bash
-python run_scripts/run_experiment.py agent=multi-agent-hybrid dataset=plancraft-test llm.model=gemini/gemini-2.0-flash
+python scripts/run_experiment.py agent=multi-agent-hybrid dataset=plancraft-test llm.model=gemini/gemini-2.0-flash
 ```
 
 #### Multi-agent independent (no coordination)
 
 ```bash
-python run_scripts/run_experiment.py agent=multi-agent-independent dataset=plancraft-test llm.model=gemini/gemini-2.0-flash
+python scripts/run_experiment.py agent=multi-agent-independent dataset=plancraft-test llm.model=gemini/gemini-2.0-flash
 ```
 
 ### Output location
