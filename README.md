@@ -93,12 +93,16 @@ python run_scripts/run_experiment.py max_instances=10
 
 #### Datasets
 
+The paper evaluates on six benchmarks. Four are integrated directly into this repository. Two (Workbench and Finance Agent) were run using their upstream implementations; see `DATA_AVAILABILITY.md` for details.
+
 | Dataset | Config Name | Description |
 |---------|-------------|-------------|
-| BrowseComp+ | `browsecomp-plus` | Web browsing comprehension tasks |
-| PlanCraft | `plancraft` | Minecraft crafting planning tasks |
-| Workbench | `workbench` | Tool use benchmark tasks |
-| FinanceAgent | `finance-agent` | Financial reasoning tasks |
+| BrowseComp-Plus | `browsecomp-plus` | Web browsing / multi-hop question answering |
+| PlanCraft | `plancraft-test` | Minecraft crafting planning tasks |
+| SWE-bench Verified | `swebench-verified` | Real-world GitHub issue resolution (Docker; 7 tools) |
+| Terminal-Bench | `terminalbench` | CLI task execution (Docker; 2 tools) |
+| Workbench | _(upstream)_ | Common business tool-use tasks. Run from https://github.com/olly-styles/WorkBench |
+| Finance Agent | _(upstream)_ | Multi-step financial reasoning. Run from https://github.com/vals-ai/finance-agent |
 
 #### Supported LLMs
 
@@ -106,7 +110,7 @@ python run_scripts/run_experiment.py max_instances=10
 |----------|--------|
 | OpenAI | GPT-5, GPT-5-mini, GPT-5-nano |
 | Google | Gemini-2.5 Pro, Gemini-2.5 Flash, Gemini-2.0 Flash |
-| Anthropic | Claude 4.5 Sonnet, Claude 4.0 Sonnet, Claude 3.7 Sonnet |
+| Anthropic | Claude Sonnet 4.5, Claude Sonnet 4, Claude Sonnet 3.7 (original 4 benchmarks only; deprecated February 2026 and therefore unavailable for SWE-bench Verified and Terminal-Bench) |
 
 ## Example Experiments
 
@@ -130,13 +134,33 @@ python run_scripts/run_experiment.py \
     max_instances=5
 ```
 
-### Multi-Agent Centralized on BrowseComp+
+### Multi-Agent Centralized on BrowseComp-Plus
 
 ```bash
 python run_scripts/run_experiment.py \
     agent=multi-agent-centralized \
     dataset=browsecomp-plus \
-    llm.model=gpt-4o-mini \
+    llm.model=openai/gpt-5-mini \
+    max_instances=5
+```
+
+### Single-Agent on SWE-bench Verified (Docker required)
+
+```bash
+python run_scripts/run_experiment.py \
+    agent=single-agent \
+    dataset=swebench-verified \
+    llm.model=openai/gpt-5-mini \
+    max_instances=5
+```
+
+### Multi-Agent Centralized on Terminal-Bench (Docker required)
+
+```bash
+python run_scripts/run_experiment.py \
+    agent=multi-agent-centralized \
+    dataset=terminalbench \
+    llm.model=openai/gpt-5-mini \
     max_instances=5
 ```
 
@@ -192,12 +216,12 @@ exp_outputs/
   }
   ```
 
-## Example Output
+## Example Traces
 
-See `example_outputs/` directory for sample experiment outputs demonstrating:
+See `example_traces/` directory for sanitized sample experiment outputs demonstrating:
 - Single-agent execution traces
 - Multi-agent coordination logs
-- Evaluation metrics
+- Per-instance and aggregated evaluation metrics
 
 ## Project Structure
 
@@ -207,20 +231,25 @@ agent-scaling/
 │   ├── agents/              # Agent implementations
 │   │   ├── single_agent.py
 │   │   ├── multiagent_centralized.py
-│   │   └── ...
-│   ├── datasets/            # Dataset loaders
-│   ├── env/                 # Environment & tools
+│   │   ├── multiagent_decentralized.py
+│   │   ├── multiagent_hybrid.py
+│   │   └── multiagent_independent.py
+│   ├── datasets/            # Dataset loaders (SWE-bench, Terminal-Bench, etc.)
+│   ├── env/                 # Environment & tools (includes Docker environments)
 │   ├── llm/                 # LLM integration
 │   └── config/              # Configuration classes
 ├── run_scripts/             # Entry points
 │   └── run_experiment.py
 ├── run_conf/                # Hydra configurations
-│   ├── agent/               # Agent configs
+│   ├── agent/               # Agent configs (single, centralized, decentralized, hybrid, independent)
 │   ├── dataset/             # Dataset configs
 │   └── run_exp.yaml         # Master config
-├── datasets/                # Dataset files
 ├── prompts/                 # Prompt templates
-└── example_outputs/         # Sample outputs
+├── analysis/                # Regression / scaling-principle analysis scripts
+├── example_traces/          # Sanitized sample execution traces
+├── datasets/                # (user-populated) Dataset files; see DATA_AVAILABILITY.md
+├── REPRODUCTION.md          # Step-by-step reproduction guide
+└── DATA_AVAILABILITY.md     # Benchmark source URLs and subset selection methodology
 ```
 
 ## Configuration Reference

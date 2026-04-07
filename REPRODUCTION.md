@@ -16,7 +16,7 @@ This document provides step-by-step instructions for reproducing all experiments
 
 ## Environment Setup
 
-**Prerequisites:** Python 3.11+, [uv](https://docs.astral.sh/uv/getting-started/installation/), Docker (required for SWE-bench and TerminalBench)
+**Prerequisites:** Python 3.11+, [uv](https://docs.astral.sh/uv/getting-started/installation/), Docker (required for SWE-bench and Terminal-Bench)
 
 ```bash
 # 1. Clone the repository
@@ -108,7 +108,7 @@ python run_scripts/run_experiment.py agent=single-agent dataset=browsecomp-plus 
 # SWE-bench Verified (20-instance subset)
 python run_scripts/run_experiment.py agent=single-agent dataset=swebench-verified llm.model=openai/gpt-5-mini
 
-# TerminalBench (20-instance subset)
+# Terminal-Bench (20-instance subset)
 python run_scripts/run_experiment.py agent=single-agent dataset=terminalbench llm.model=openai/gpt-5-mini
 ```
 
@@ -179,10 +179,8 @@ All prompt templates are under `prompts/`. They use `{{variable}}` placeholder s
 |------|---------|
 | `prompts/dataset-shared/plancraft.yaml` | PlanCraft |
 | `prompts/dataset-shared/browsecomp.yaml` | BrowseComp-Plus |
-| `prompts/dataset-shared/swebench.yaml` | SWE-bench Verified / SWE-bench Pro |
-| `prompts/dataset-shared/terminalbench.yaml` | TerminalBench |
-| `prompts/dataset-shared/simpleqa.yaml` | SimpleQA |
-| `prompts/dataset-shared/multiagent_simpleqa.yaml` | SimpleQA (multi-agent) |
+| `prompts/dataset-shared/swebench.yaml` | SWE-bench Verified |
+| `prompts/dataset-shared/terminalbench.yaml` | Terminal-Bench |
 
 ### Evaluation / grading prompts
 
@@ -205,8 +203,6 @@ All agent configs are under `run_conf/agent/`.
 | `run_conf/agent/multi-agent-decentralized.yaml` | Decentralized MAS | 3 | Peer consensus, 70% agreement threshold |
 | `run_conf/agent/multi-agent-hybrid.yaml` | Hybrid MAS | 3 | Lead + peer communication enabled |
 | `run_conf/agent/multi-agent-independent.yaml` | Independent MAS | 3 | No inter-agent coordination |
-| `run_conf/agent/direct-prompt.yaml` | Direct prompt | 1 | No iterative tool use |
-| `run_conf/agent/multi-agent-research.yaml` | Research MAS | varies | Extended research variant |
 
 Key shared parameters (centralized / decentralized / hybrid / independent):
 
@@ -221,17 +217,25 @@ max_rounds: 10
 
 ## Dataset Files
 
-All dataset files used in the paper are under `datasets/` and `run_conf/dataset/`.
+The paper evaluates on six benchmarks. Four are integrated into this repository; two are run from their upstream implementations. Dataset JSON files for the integrated benchmarks are **not redistributed** here due to licensing and size constraints: users must download each benchmark from its original source and place the files under `datasets/`. Dataset configuration files (`run_conf/dataset/*.yaml`) are provided for the integrated benchmarks.
 
-| Dataset | Config file | Data file | Instances used | Selection method |
-|---------|-------------|-----------|----------------|-----------------|
-| PlanCraft | `run_conf/dataset/plancraft-test.yaml` | `datasets/plancraft-test.json` | 100 (full test set) | All instances |
-| BrowseComp-Plus | `run_conf/dataset/browsecomp-plus.yaml` | `datasets/browsecomp_plus_sampled_100.json` | 100 | Random sample |
-| SWE-bench Verified | `run_conf/dataset/swebench-verified.yaml` | `datasets/swebench-verified.json` | 20 | Deterministic shuffle, seed 42, first 20 |
-| SWE-bench Pro | `run_conf/dataset/swebench-pro.yaml` | `datasets/swebench-pro.json` | 20 | Deterministic shuffle, seed 42, first 20 |
-| TerminalBench | `run_conf/dataset/terminalbench.yaml` | `datasets/terminalbench.json` | 20 | First 20 instances |
+### Integrated benchmarks (run directly from this repository)
 
-See `DATA_AVAILABILITY.md` for full dataset descriptions and source URLs.
+| Dataset | Config file | Expected local path | Instances used | Selection method |
+|---------|-------------|---------------------|----------------|-----------------|
+| PlanCraft | `run_conf/dataset/plancraft-test.yaml` | `datasets/plancraft-test.json` | 100 | Full test set |
+| BrowseComp-Plus | `run_conf/dataset/browsecomp-plus.yaml` | `datasets/browsecomp_plus_sampled_100.json` | 100 | 100-instance fixed random sample |
+| SWE-bench Verified | `run_conf/dataset/swebench-verified.yaml` | `datasets/swebench-verified.json` | 20 | Deterministic shuffle (seed 42), first 20 |
+| Terminal-Bench | `run_conf/dataset/terminalbench.yaml` | `datasets/terminalbench.json` | 20 | First 20 in canonical order |
+
+### Upstream benchmarks (run from external repositories)
+
+| Dataset | Upstream repository | Instances used |
+|---------|---------------------|----------------|
+| Workbench | https://github.com/olly-styles/WorkBench | 100 (full evaluation set) |
+| Finance Agent | https://github.com/vals-ai/finance-agent | 50 (full evaluation set) |
+
+For Workbench and Finance Agent, the same five coordination architectures were applied to the upstream task loaders. See `DATA_AVAILABILITY.md` for full benchmark sources and licensing.
 
 ---
 
@@ -247,11 +251,11 @@ All estimates assume `num_workers=1`, `temperature=0.0`, `n_base_agents=3`.
 | BrowseComp-Plus (100 inst.) | Multi-agent-centralized | gpt-5-mini | ~6 hr | ~$18 |
 | SWE-bench Verified (20 inst.) | Single-agent | gpt-5-mini | ~1 hr | ~$4 |
 | SWE-bench Verified (20 inst.) | Multi-agent-centralized | gpt-5-mini | ~3 hr | ~$14 |
-| TerminalBench (20 inst.) | Single-agent | gpt-5-mini | ~1 hr | ~$4 |
-| TerminalBench (20 inst.) | Multi-agent-centralized | gpt-5-mini | ~3 hr | ~$14 |
+| Terminal-Bench (20 inst.) | Single-agent | gpt-5-mini | ~1 hr | ~$4 |
+| Terminal-Bench (20 inst.) | Multi-agent-centralized | gpt-5-mini | ~3 hr | ~$14 |
 
 **Notes:**
 - Estimates are approximate; actual cost depends on task difficulty and model verbosity.
 - Using `num_workers=4` reduces wall time by ~3-4x with proportional cost.
-- SWE-bench and TerminalBench require Docker and pull benchmark container images on first run (~5–10 min overhead).
+- SWE-bench and Terminal-Bench require Docker and pull benchmark container images on first run (~5–10 min overhead).
 - Cost estimates use pricing at time of submission; check current provider pricing before large runs.
