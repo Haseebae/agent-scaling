@@ -1,0 +1,14 @@
+dataset_id: swebench-verified
+from_langfuse: false
+local_path: datasets/swebench-verified.json
+templates_local_path: prompts/dataset-shared/swebench.yaml
+env:
+  name: swebench
+  tools:
+    - bash
+    - read_file
+    - edit_file
+    - find_file
+    - search_dir
+    - run_tests
+    - submit_patch

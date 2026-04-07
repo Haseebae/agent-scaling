@@ -38,6 +38,12 @@ class LLMConfig(BaseModel):
     model: str = "gemini/gemini-2.0-flash"
 
     def get_llm(self) -> ChatLiteLLMLC:
+        # Disable litellm's internal retries - key rotation in ChatLiteLLMLC handles this
+        litellm.num_retries = 0
+        litellm.request_timeout = 120
+
         return ChatLiteLLMLC(
-            model=self.model, **self.params.model_dump(exclude={"cache"})
+            model=self.model,
+            max_retries=1,  # Disable tenacity retries in langchain_litellm
+            **self.params.model_dump(exclude={"cache"}),
         )

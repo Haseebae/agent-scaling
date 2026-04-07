@@ -50,3 +50,17 @@ tests/
 *.md
 !README.md
 .nfs*
+
+# Exclude private/sensitive dirs (NMI rebuttal)
+nmi_rebuttal/
+scripts/
+colab_analysis/
+latex/
+.omc/
+
+# Exclude licensed dataset files (users should download from originals)
+datasets/*.json
+
+# Allow key documentation files despite *.md exclusion
+!REPRODUCTION.md
+!DATA_AVAILABILITY.md

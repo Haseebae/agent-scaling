@@ -103,6 +103,8 @@ class WorkerSubagent(BaseAgentWithTools):
 
         # Simple iteration loop with conversation persistence
         curr_iteration = 0
+        recent_actions: list = []
+        recent_observations: list = []
         for iteration in range(self.max_iterations_per_agent):
             curr_iteration += 1
             logger.info(
@@ -154,6 +156,78 @@ class WorkerSubagent(BaseAgentWithTools):
                         message=tool_msg,  # type: ignore
                         iteration_num=curr_iteration,
                     )
+                    # Track action and observation for loop detection
+                    tool_input = tool_call.get("args", {})
+                    action_str = f"{tool_name}({', '.join([f'{k}={v}' for k, v in tool_input.items()])})"
+                    obs_str = str(tool_resp.content) if tool_resp else ""
+                    recent_actions.append(action_str)
+                    recent_observations.append(obs_str)
+                    if len(recent_actions) > 3:
+                        recent_actions.pop(0)
+                        recent_observations.pop(0)
+                    # Loop detection — warn agent if stuck
+                    if len(recent_actions) >= 3:
+                        last_actions = recent_actions[-3:]
+                        last_obs = recent_observations[-3:]
+                        loop_warn = None
+                        if len(set(last_actions)) == 1 and last_actions[0] != "":
+                            loop_warn = {
+                                "role": "user",
+                                "content": (
+                                    "WARNING: You have repeated the same action 3 times in a row with identical results. "
+                                    "This approach is not working. Try a DIFFERENT strategy:\n"
+                                    "- If editing a file fails repeatedly, try reading the full file first and rewriting it completely\n"
+                                    "- If a command produces wrong output, change your approach rather than re-running it\n"
+                                    "- Consider whether you're solving the right problem"
+                                ),
+                            }
+                        elif len(set(last_obs)) == 1 and last_obs[0] != "":
+                            loop_warn = {
+                                "role": "user",
+                                "content": (
+                                    "WARNING: The last 3 tool calls produced identical output. "
+                                    "You appear to be stuck in a loop. Change your approach."
+                                ),
+                            }
+                        # Similarity-based loop detection: catch near-identical actions
+                        elif all(a != "" for a in last_actions):
+                            tool_names = [a.split("(")[0] if "(" in a else a for a in last_actions]
+                            if len(set(tool_names)) == 1:
+                                all_errors = all(
+                                    "error" in o.lower() or "No such file" in o or "Exit code:" in o
+                                    for o in last_obs if o
+                                )
+                                if all_errors:
+                                    loop_warn = {
+                                        "role": "user",
+                                        "content": (
+                                            "WARNING: You have called the same tool 3 times in a row and all "
+                                            "returned errors. This approach is failing. Stop and try a completely "
+                                            "different strategy. Do NOT continue with variations of the same command."
+                                        ),
+                                    }
+                        if loop_warn:
+                            messages.append(loop_warn)  # type: ignore
+                            self.conv_history.add_internal_message(
+                                message=loop_warn,  # type: ignore
+                                iteration_num=curr_iteration,
+                            )
+                    # Budget warning for subagents
+                    remaining = self.max_iterations_per_agent - iteration - 1
+                    if remaining == self.max_iterations_per_agent // 4 and remaining > 0:
+                        budget_warn = {
+                            "role": "user",
+                            "content": (
+                                f"BUDGET WARNING: You have only {remaining} iterations remaining. "
+                                "If you haven't made code changes yet, do so NOW. "
+                                "Focus on implementation and submission, not further exploration."
+                            ),
+                        }
+                        messages.append(budget_warn)  # type: ignore
+                        self.conv_history.add_internal_message(
+                            message=budget_warn,  # type: ignore
+                            iteration_num=curr_iteration,
+                        )
                     # Check if done
                     if tool_name == "done":
                         logger.info(

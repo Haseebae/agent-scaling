@@ -1,7 +1,8 @@
+"""Hybrid multi-agent system: centralized coordination + peer-to-peer communication."""
 import asyncio
 import os.path as osp
 import time
-from typing import Optional
+from typing import Dict, List, Optional
 
 from agent_scaling.agents.base import AgentSystemWithTools
 from agent_scaling.config.llm import LLMParams
@@ -9,15 +10,21 @@ from agent_scaling.datasets import DatasetInstance, DatasetInstanceOutputWithTra
 from agent_scaling.logger import logger
 from agent_scaling.utils import write_yaml
 
-from .multiagent_components.conversation import OrchestrationResult
+from .multiagent_components.conversation import OrchestrationResult, SubAgentRoundResult
 from .multiagent_components.mas_lead_agent import LeadAgent
+from .multiagent_components.mas_subagent import WorkerSubagent
 from .multiagent_components.memory import EnhancedMemory
 from .registry import register_agent
 
 
-@register_agent("multi-agent-centralized")
-class CentralizedMultiAgentSystem(AgentSystemWithTools):
-    """Centralized multi-agent system with orchestrator coordinating workers"""
+@register_agent("multi-agent-hybrid")
+class HybridMultiAgentSystem(AgentSystemWithTools):
+    """Hybrid multi-agent system: orchestrator coordinates + agents share peer findings.
+
+    Combines centralized orchestration with peer-to-peer knowledge sharing.
+    The lead agent plans and coordinates, while agents directly receive
+    findings from peers in their prompts (not just orchestrator summaries).
+    """
 
     required_prompts = ["lead_agent", "subagent"]
 
@@ -26,15 +33,16 @@ class CentralizedMultiAgentSystem(AgentSystemWithTools):
         *args,
         n_base_agents: int = 3,
         min_iterations_per_agent: int = 3,
-        max_iterations_per_agent: int = 10,
+        max_iterations_per_agent: int = 7,
+        enable_peer_communication: bool = True,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.memory = EnhancedMemory()
-
         self.n_base_agents = n_base_agents
         self.min_iterations_per_agent = min_iterations_per_agent
         self.max_iterations_per_agent = max_iterations_per_agent
+        self.enable_peer_communication = enable_peer_communication
 
         self.lead_agent = LeadAgent(
             *args,
@@ -44,32 +52,22 @@ class CentralizedMultiAgentSystem(AgentSystemWithTools):
             num_base_agents=n_base_agents,
             max_rounds=kwargs.get("max_rounds", 10),
             max_execution_time=kwargs.get("max_execution_time", 600),
-            domain_config={"task_blurb": kwargs.get("task_blurb", "task coordinator")},
+            domain_config={"task_blurb": kwargs.get("task_blurb", "hybrid coordinator")},
             **{k: v for k, v in kwargs.items() if k not in ("max_rounds", "max_execution_time", "task_blurb")},
         )
 
         logger.info(
-            f"CentralizedMultiAgentSystem initialized with: {n_base_agents} agents, {min_iterations_per_agent} min iterations per agent (adaptive orchestration)"
-        )
-        logger.info(
-            "Using prompt compilation with dataset-shared templates like single-agent system"
+            f"HybridMultiAgentSystem: {n_base_agents} agents, "
+            f"peer_communication={enable_peer_communication}"
         )
 
-    def _auto_submit(
-        self, result: OrchestrationResult, synthesized_answer: str
-    ) -> str:
-        """Auto-submit after orchestration if no subagent already submitted.
-
-        Uses agent_1's environment to trigger the submit/submit_patch tool,
-        passing the synthesized answer as reasoning.
-        """
-        # Pick the first subagent's environment for submission
+    def _auto_submit(self, result: OrchestrationResult, synthesized_answer: str) -> str:
+        """Auto-submit after orchestration if no subagent already submitted."""
         for agent_id, agent in self.lead_agent.subagents.items():
             env = agent.env
-            reasoning = (synthesized_answer or "Multi-agent synthesis")[:500]
+            reasoning = (synthesized_answer or "Hybrid multi-agent synthesis")[:500]
             if env.env_done():
                 break
-            # Use execute_tool with a synthetic ToolCall
             submit_tool_name = None
             if "submit_patch" in env.tools:
                 submit_tool_name = "submit_patch"
@@ -81,15 +79,44 @@ class CentralizedMultiAgentSystem(AgentSystemWithTools):
                     tool_call = {
                         "name": submit_tool_name,
                         "args": {"reasoning": reasoning},
-                        "id": "auto_submit",
+                        "id": "auto_submit_hybrid",
                         "type": "tool_call",
                     }
                     tool_msg = env.execute_tool(tool_call)
                     return str(tool_msg.content)
                 except Exception as e:
                     logger.warning(f"Auto {submit_tool_name} failed: {e}")
-            break  # Only try the first subagent
+            break
         return synthesized_answer
+
+    def _inject_peer_findings(
+        self, agent: WorkerSubagent, all_subagents: Dict[str, WorkerSubagent]
+    ) -> str:
+        """Build direct peer-to-peer context for an agent.
+
+        Unlike centralized which only passes orchestrator summaries,
+        hybrid injects raw peer findings directly into agent context.
+        """
+        if not self.enable_peer_communication:
+            return ""
+
+        peer_sections = []
+        for other_id, other_agent in all_subagents.items():
+            if other_id == agent.agent_id:
+                continue
+            # Get the peer's actual findings (not orchestrator summary)
+            peer_findings = other_agent.conv_history.last_outgoing_external_message
+            if peer_findings and len(peer_findings.strip()) > 10:
+                peer_sections.append(
+                    f"[PEER {other_id}]: {peer_findings[:400]}"
+                )
+
+        if peer_sections:
+            return (
+                "\n\n## Direct Peer Findings (shared peer-to-peer)\n"
+                + "\n".join(peer_sections)
+            )
+        return ""
 
     def run_agent(
         self,
@@ -98,7 +125,6 @@ class CentralizedMultiAgentSystem(AgentSystemWithTools):
         llm_params: Optional[LLMParams] = None,
         instance_idx: Optional[int] = None,
     ) -> DatasetInstanceOutputWithTrajectory:
-        """Synchronous wrapper for backward compatibility"""
         return asyncio.run(
             self.run_agent_async(instance, instance_dir, llm_params, instance_idx)
         )
@@ -110,33 +136,63 @@ class CentralizedMultiAgentSystem(AgentSystemWithTools):
         llm_params: Optional[LLMParams] = None,
         instance_idx: Optional[int] = None,
     ) -> DatasetInstanceOutputWithTrajectory:
-        """Async version of run_agent for better performance"""
         start_time = time.time()
-        logger.info(f"Starting multi-agent processing for instance {instance_idx}")
-        logger.info(
-            f"Configuration: {self.n_base_agents} agents, {self.min_iterations_per_agent} min iterations per agent"
-        )
-        # Process llm_params like single_agent.py
         llm_params_dict = llm_params.model_dump() if llm_params else {}
+
+        logger.info("Starting hybrid multi-agent processing")
 
         # Use task-specific time limit if available
         self.lead_agent.max_execution_time = getattr(instance, "time_limit", 600)
-        logger.info("Starting lead agent orchestration...")
+        # Use lead agent's orchestration for planning
         processing_result: OrchestrationResult = await self.lead_agent.orchestrate_work(
             task_instance=instance,
             llm_params_dict=llm_params_dict,
         )
 
         final_answer = processing_result.synthesized_answer
-        if final_answer is not None:
-            logger.info(
-                f"Final answer extracted: {final_answer[:200]}..."
-                if len(str(final_answer)) > 200
-                else f"Final answer extracted: {final_answer}"
-            )
 
-        # Auto-submit if no subagent already submitted
-        # This ensures evaluation runs even when subagents only explored
+        # After orchestration rounds, run a peer-enhanced final round
+        # where agents get direct peer findings
+        if self.enable_peer_communication:
+            active_agents = [
+                aid for aid, a in self.lead_agent.subagents.items()
+                if not a.env.env_done()
+            ]
+            if active_agents:
+                logger.info(f"Running peer-enhanced round with {len(active_agents)} agents")
+                tasks = []
+                for agent_id in active_agents:
+                    subagent = self.lead_agent.subagents[agent_id]
+                    peer_context = self._inject_peer_findings(
+                        subagent, self.lead_agent.subagents
+                    )
+                    message = (
+                        f"Final round with peer insights. Review your peers' work "
+                        f"and finalize your solution.{peer_context}"
+                    )
+                    task = asyncio.create_task(
+                        asyncio.to_thread(
+                            subagent.process_orchestrator_message, message
+                        )
+                    )
+                    tasks.append((agent_id, task))
+
+                done, pending = await asyncio.wait(
+                    [t for _, t in tasks], timeout=300
+                )
+                for t in pending:
+                    t.cancel()
+
+                for agent_id, task in tasks:
+                    if task in done:
+                        try:
+                            result = await task
+                            if result.findings:
+                                self.memory.add_findings(agent_id, result.findings)
+                        except Exception as e:
+                            logger.warning(f"Peer round agent {agent_id} failed: {e}")
+
+        # Auto-submit if no subagent submitted
         any_done = any(
             agent.env.env_done()
             for agent in self.lead_agent.subagents.values()
@@ -145,7 +201,6 @@ class CentralizedMultiAgentSystem(AgentSystemWithTools):
             # If synthesis is empty, build reasoning from sub-agent findings
             submit_reasoning = final_answer or ""
             if not submit_reasoning.strip():
-                # Gather findings from all sub-agents as fallback reasoning
                 all_findings = []
                 for agent_id, findings in self.memory.agent_findings.items():
                     for f in findings:
@@ -154,7 +209,7 @@ class CentralizedMultiAgentSystem(AgentSystemWithTools):
                 if all_findings:
                     submit_reasoning = "Multi-agent findings:\n" + "\n".join(all_findings[-3:])
                 else:
-                    submit_reasoning = "Multi-agent synthesis (no explicit findings collected)"
+                    submit_reasoning = "Hybrid multi-agent synthesis (no explicit findings collected)"
                 logger.warning(
                     f"Synthesis was empty, using sub-agent findings for auto-submit: {submit_reasoning[:100]}..."
                 )
@@ -163,9 +218,14 @@ class CentralizedMultiAgentSystem(AgentSystemWithTools):
             )
 
         execution_time = time.time() - start_time
-
+        total_iterations = sum(
+            a.conv_history.total_iterations
+            for a in self.lead_agent.subagents.values()
+        )
         logger.info(
-            f"Processing completed in {execution_time:.2f}s with {processing_result.total_agent_iterations} total iterations across {len(processing_result.subagent_conversations)} agents"
+            f"Hybrid processing completed in {execution_time:.2f}s "
+            f"with {total_iterations} total iterations across "
+            f"{len(self.lead_agent.subagents)} agents"
         )
 
         if instance_dir is not None:
@@ -176,19 +236,18 @@ class CentralizedMultiAgentSystem(AgentSystemWithTools):
                 truncate_floats=False,
             )
 
-        # Re-fetch env status after potential auto-submit
+        # Get final env status
         final_env_status = None
-        for agent_id, agent in self.lead_agent.subagents.items():
+        for agent in self.lead_agent.subagents.values():
             if agent.env.env_done():
                 final_env_status = agent.env.env_status()
                 break
         if final_env_status is None:
             final_env_status = processing_result.combined_env_status
 
-        # Return DatasetInstanceOutputWithTrajectory like single_agent.py
         return DatasetInstanceOutputWithTrajectory(
             data_instance=instance,
             agent_output=final_answer,
-            trajectory=[],  # Multi-agent doesn't have a single trajectory
+            trajectory=[],
             final_env_output=final_env_status,
         )

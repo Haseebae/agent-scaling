@@ -29,13 +29,19 @@ class LeadAgent(BaseAgentWithTools):
         *args,
         memory: EnhancedMemory,
         min_iterations_per_agent: int = 3,
+        max_iterations_per_agent: int = 25,
         num_base_agents: int = 3,
+        max_rounds: int = 10,
+        max_execution_time: int = 600,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.memory = memory
         self.min_iterations_per_agent = min_iterations_per_agent
+        self.max_iterations_per_agent = max_iterations_per_agent
         self.num_base_agents = num_base_agents
+        self.max_rounds = max_rounds
+        self.max_execution_time = max_execution_time
         self.subagents: Dict[str, WorkerSubagent] = {}
         self.subagent_kwargs = kwargs
         self.conv_history = AgentConversationHistory(agent_id="lead_agent")
@@ -149,6 +155,7 @@ class LeadAgent(BaseAgentWithTools):
                 strategy=subtask.focus,
                 task_instance=task_instance,
                 min_iterations_per_agent=self.min_iterations_per_agent,
+                max_iterations_per_agent=self.max_iterations_per_agent,
                 **filtered_subagent_kwargs,
             )
             self.subagents[subtask.agent_id] = subagent
@@ -164,7 +171,7 @@ class LeadAgent(BaseAgentWithTools):
     ) -> OrchestrationResult:
         """Main orchestration loop for coordinating multiple agents"""
         start_time = time.time()
-        max_execution_time = 300
+        max_execution_time = self.max_execution_time
         # Store original query in memory
         shared_prompt_templates = self.get_dataset_prompt_templates(
             dataset_instance=task_instance
@@ -182,9 +189,9 @@ class LeadAgent(BaseAgentWithTools):
 
         # Step 3: Orchestrate work in rounds
         round_num = 0
-        max_rounds = 5
+        max_rounds = self.max_rounds
         start_time = time.time()
-        max_execution_time = 300
+        max_execution_time = self.max_execution_time
 
         round_results = None
         while round_num < max_rounds:
@@ -295,7 +302,7 @@ class LeadAgent(BaseAgentWithTools):
         try:
             done, pending = await asyncio.wait(
                 [task for _, task in tasks],
-                timeout=120,  # 2 minutes timeout per round
+                timeout=300,  # 5 minutes timeout per round
             )
             # Cancel pending tasks
             for task in pending:
@@ -305,9 +312,17 @@ class LeadAgent(BaseAgentWithTools):
             results = {}
             for agent_id, task in tasks:
                 if task in done:
-                    result: SubAgentRoundResult = await task
-                    # Validate result structure
-                    results[agent_id] = result
+                    try:
+                        result: SubAgentRoundResult = await task
+                        results[agent_id] = result
+                    except Exception as e:
+                        logger.warning(f"Subagent {agent_id} task failed: {e}")
+                        results[agent_id] = SubAgentRoundResult(
+                            agent_id=agent_id,
+                            findings="",
+                            env_status=self.subagents[agent_id].env.env_status(),
+                            error_msg=f"Agent task error: {e}",
+                        )
                 else:
                     logger.warning(f"Orchestrator task for agent {agent_id} timed out")
                     results[agent_id] = SubAgentRoundResult(
@@ -452,7 +467,7 @@ class LeadAgent(BaseAgentWithTools):
 
         # Get findings from all subagents
         for agent_id, agent in self.subagents.items():
-            for finding in self.memory.agent_findings[agent_id]:
+            for finding in self.memory.agent_findings.get(agent_id, []):
                 if finding and len(finding.strip()) > 20:
                     all_agent_findings.append(f"Agent {agent_id}: {finding[:200]}...")
         # Also include current round results for immediate context

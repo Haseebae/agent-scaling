@@ -1,6 +1,7 @@
 import concurrent.futures
 import contextlib
 import os
+import random
 import traceback
 from typing import Any, Dict, List, Optional, Union
 
@@ -59,7 +60,14 @@ class ExperimentRunner:
                 if eval(self.config.dataset.dataset_filter, {}, {"x": instance, "i": i})
             ]
         else:
-            instances = self.dataset.instances
+            instances = list(self.dataset.instances)
+
+        # Deterministic shuffle for SWE-bench to avoid alphabetical bias (all astropy first)
+        # Skip shuffle for other datasets where ordering is already reasonable
+        if "swebench" in self.dataset.dataset_id:
+            rng = random.Random(42)
+            rng.shuffle(instances)
+
         instances = instances[:max_instances]
         return instances
 
@@ -76,6 +84,8 @@ class ExperimentRunner:
         else:
             iterator = enumerate(instances)
 
+        consecutive_failures = 0
+        max_consecutive_failures = 3
         for i, instance in iterator:
             if self.config.debug and i >= 10:
                 break
@@ -87,8 +97,22 @@ class ExperimentRunner:
                 os.makedirs(instance_dir, exist_ok=True)
 
             # Use the core worker function
-            inst_metrics = self._process_single_instance(i, instance, instance_dir)
-            metrics.append(inst_metrics)
+            try:
+                inst_metrics = self._process_single_instance(i, instance, instance_dir)
+                metrics.append(inst_metrics)
+                consecutive_failures = 0
+            except Exception as e:
+                logger.error(f"Instance {i} failed with error: {e}")
+                # Record failure metrics so experiment continues
+                # Use "resolved" key to match dataset get_metrics expectations
+                metrics.append({"resolved": 0, "num_steps": 0, "success": 0})
+                consecutive_failures += 1
+                if consecutive_failures >= max_consecutive_failures:
+                    logger.error(
+                        f"Aborting experiment: {consecutive_failures} consecutive failures. "
+                        f"Last error: {e}"
+                    )
+                    break
 
         all_metrics = self.dataset.get_metrics(metrics)
         if self.output_dir is not None:
@@ -121,39 +145,64 @@ class ExperimentRunner:
         context_manager = self._get_context_manager(i)
         with context_manager as span:
             agent = self.config.get_agent()
-            output = agent.run_agent(
-                instance,
-                instance_dir=instance_dir,
-                llm_params=self.config.llm.params,
-                instance_idx=i,
-            )
-            inst_metrics = self.dataset.get_instance_eval_metrics(output)
-            inst_output = self.dataset.get_instance_eval_output(output)
-            if isinstance(span, LangfuseSpan):
-                span.update(
-                    input=instance.get_prompt_info(),
-                    output=inst_output,
+            try:
+                output = agent.run_agent(
+                    instance,
+                    instance_dir=instance_dir,
+                    llm_params=self.config.llm.params,
+                    instance_idx=i,
                 )
-                for name, metric in inst_metrics.items():
-                    span.score_trace(
-                        name=name,
-                        value=metric,
+                inst_metrics = self.dataset.get_instance_eval_metrics(output)
+                inst_output = self.dataset.get_instance_eval_output(output)
+                if isinstance(span, LangfuseSpan):
+                    span.update(
+                        input=instance.get_prompt_info(),
+                        output=inst_output,
+                    )
+                    for name, metric in inst_metrics.items():
+                        span.score_trace(
+                            name=name,
+                            value=metric,
+                        )
+
+                if instance_dir is not None:
+                    output_save = InstanceSave(
+                        inp=instance.get_prompt_info(),
+                        output=inst_output,
+                        metrics=inst_metrics,  # type: ignore
+                        expected_output=instance.expected_output,
+                    )
+                    write_yaml(
+                        output_save.model_dump(),
+                        os.path.join(instance_dir, "instance_save.yaml"),
+                        indent=True,
                     )
 
-            if instance_dir is not None:
-                output_save = InstanceSave(
-                    inp=instance.get_prompt_info(),
-                    output=inst_output,
-                    metrics=inst_metrics,  # type: ignore
-                    expected_output=instance.expected_output,
-                )
-                write_yaml(
-                    output_save.model_dump(),
-                    os.path.join(instance_dir, "instance_save.yaml"),
-                    indent=True,
-                )
+                return inst_metrics
+            finally:
+                # Cleanup Docker containers — handle both single and multi-agent
+                self._cleanup_agent(agent)
 
-            return inst_metrics
+    def _cleanup_agent(self, agent) -> None:
+        """Clean up Docker containers for any agent type."""
+        # Single-agent: agent.env._cleanup()
+        if hasattr(agent, "env") and hasattr(agent.env, "_cleanup"):
+            try:
+                agent.env._cleanup()
+            except Exception as e:
+                logger.warning(f"Docker cleanup error: {e}")
+
+        # Multi-agent: iterate over subagents
+        lead = getattr(agent, "lead_agent", None)
+        if lead is not None:
+            subagents = getattr(lead, "subagents", {})
+            for agent_id, sub in subagents.items():
+                env = getattr(sub, "env", None)
+                if env is not None and hasattr(env, "_cleanup"):
+                    try:
+                        env._cleanup()
+                    except Exception as e:
+                        logger.warning(f"Docker cleanup error for {agent_id}: {e}")
 
     def run_parallel(self, num_workers: int = 4):
         """

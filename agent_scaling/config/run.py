@@ -1,7 +1,7 @@
 from typing import Any, Dict, Optional, Self
 
 from litellm import _logging as litellm_logging
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from agent_scaling.agents import AgentSystem, get_agent_cls
 from agent_scaling.langfuse_client import get_lf_client
@@ -16,17 +16,13 @@ from .llm import LLMConfig
 from .prompts import Prompt
 
 
-class MultiAgentResearchConfig(BaseModel):
-    n_base_agents: int = 3
-    max_orchestrator_turns: int = 2
-    min_searches_per_agent: int = 3
-    max_iterations_per_agent: int = 7
-
-
 class AgentConfig(BaseModel):
+    """Agent configuration that captures all YAML fields and passes them to the agent."""
+
+    model_config = ConfigDict(extra="allow")
+
     name: str
     prompts: Dict[str, Prompt] = Field(default_factory=dict)
-    agent_specific_config: Optional[MultiAgentResearchConfig] = None
 
     @model_validator(mode="after")
     def check_prompts(self) -> Self:
@@ -47,6 +43,22 @@ class AgentConfig(BaseModel):
         data["prompts"] = prompts
         return data
 
+    def get_agent_kwargs(self) -> Dict[str, Any]:
+        """Get all extra fields from YAML config to pass to the agent constructor."""
+        if not self.__pydantic_extra__:
+            return {}
+        # Convert OmegaConf DictConfig/ListConfig to plain Python types
+        result = {}
+        for k, v in self.__pydantic_extra__.items():
+            try:
+                from omegaconf import OmegaConf
+                if OmegaConf.is_config(v):
+                    v = OmegaConf.to_container(v, resolve=True)
+            except ImportError:
+                pass
+            result[k] = v
+        return result
+
     def get_run_metadata(self) -> Dict[str, Any]:
         prompts = {}
         assert self.prompts is not None, "Prompts must be defined in AgentConfig"
@@ -54,10 +66,14 @@ class AgentConfig(BaseModel):
             prompts[k] = {
                 "name": prompt.name,
             }
-        return {
+        metadata: Dict[str, Any] = {
             "name": self.name,
             "prompts": prompts,
         }
+        agent_kwargs = self.get_agent_kwargs()
+        if agent_kwargs:
+            metadata["agent_params"] = agent_kwargs
+        return metadata
 
 
 class RunConfig(BaseModel):
@@ -96,11 +112,7 @@ class RunConfig(BaseModel):
             llm_config=self.llm,
             dataset_config=self.dataset,
             prompts=self.agent.prompts,
-            **(
-                self.agent.agent_specific_config.model_dump(exclude_none=True)
-                if self.agent.agent_specific_config is not None
-                else {}
-            ),
+            **self.agent.get_agent_kwargs(),
         )
 
     def get_run_metadata(self) -> Dict[str, Any]:

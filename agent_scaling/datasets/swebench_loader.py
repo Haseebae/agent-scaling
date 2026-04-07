@@ -1,0 +1,91 @@
+"""Download SWE-Bench Verified/Pro from HuggingFace and convert to framework JSON format.
+
+Usage:
+    python -m agent_scaling.datasets.swebench_loader --variant verified --output datasets/swebench-verified.json
+    python -m agent_scaling.datasets.swebench_loader --variant pro --output datasets/swebench-pro.json
+"""
+
+import argparse
+import json
+import os
+
+from datasets import load_dataset
+from loguru import logger
+
+VARIANTS = {
+    "verified": {
+        "hf_path": "princeton-nlp/SWE-bench_Verified",
+        "split": "test",
+        "dataset_id": "swebench-verified",
+        "expected_count": 500,
+    },
+    "pro": {
+        "hf_path": "ScaleAI/SWE-bench_Pro",
+        "split": "test",
+        "dataset_id": "swebench-pro",
+        "expected_count": 731,
+    },
+}
+
+# Fields that may have inconsistent casing across HF datasets
+FIELD_NORMALIZATION = {
+    "FAIL_TO_PASS": "fail_to_pass",
+    "PASS_TO_PASS": "pass_to_pass",
+}
+
+
+def normalize_instance(raw: dict) -> dict:
+    """Normalize field names from HuggingFace dataset format."""
+    normalized = {}
+    for key, value in raw.items():
+        norm_key = FIELD_NORMALIZATION.get(key, key)
+        normalized[norm_key] = value
+    return normalized
+
+
+def load_and_convert(variant: str, output_path: str) -> None:
+    """Load dataset from HuggingFace and save as framework JSON."""
+    config = VARIANTS[variant]
+    logger.info(f"Loading {config['hf_path']} split={config['split']}...")
+
+    dataset = load_dataset(config["hf_path"], split=config["split"])
+    logger.info(f"Loaded {len(dataset)} instances (expected: {config['expected_count']})")
+
+    instances = []
+    for row in dataset:
+        instance = normalize_instance(dict(row))
+        instances.append(instance)
+
+    output = {
+        "dataset_id": config["dataset_id"],
+        "instances": instances,
+    }
+
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    with open(output_path, "w") as f:
+        json.dump(output, f, indent=2)
+
+    logger.info(f"Saved {len(instances)} instances to {output_path}")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Download SWE-Bench dataset and convert to framework JSON format"
+    )
+    parser.add_argument(
+        "--variant",
+        choices=["verified", "pro"],
+        required=True,
+        help="SWE-Bench variant to download",
+    )
+    parser.add_argument(
+        "--output",
+        required=True,
+        help="Output JSON file path",
+    )
+    args = parser.parse_args()
+    load_and_convert(args.variant, args.output)
+
+
+if __name__ == "__main__":
+    main()
